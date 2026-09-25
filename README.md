@@ -11,9 +11,9 @@ TourMate AI is a **multimodal travel assistant** designed to make trip planning 
 ## 🚀 Live Demo
 
 🔗 **Live Application:**  
-[TourMate AI – Streamlit App](YOUR_STREAMLIT_APP_LINK)
+[TourMate AI – Streamlit App]https://tourmate-assistant.streamlit.app/
 
-> Replace `YOUR_STREAMLIT_APP_LINK` with your deployed Streamlit URL.
+> Replace `https://tourmate-assistant.streamlit.app/)` with your deployed Streamlit URL.
 
 ---
 
