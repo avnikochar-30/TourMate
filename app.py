@@ -6,6 +6,92 @@ from translator import translate
 from gtts import gTTS
 from travel_data import DESTINATIONS
 import re
+import sqlite3
+from datetime import datetime
+from vision_analyzer import analyze_travel_image
+
+
+# ============================================================
+# SAVED TRIPS DATABASE
+# ============================================================
+
+def init_db():
+
+    conn = sqlite3.connect("tourmate.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS trips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            destination TEXT NOT NULL,
+            days INTEGER NOT NULL,
+            budget TEXT,
+            interests TEXT,
+            itinerary TEXT NOT NULL,
+            saved_at TEXT NOT NULL
+        )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+def save_trip(destination, days, budget, interests, itinerary):
+
+    conn = sqlite3.connect("tourmate.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO trips
+        (destination, days, budget, interests, itinerary, saved_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        destination,
+        days,
+        str(budget) if budget is not None else "Not specified",
+        ", ".join(interests) if interests else "General",
+        itinerary,
+        datetime.now().strftime("%d %b %Y, %I:%M %p")
+    ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_saved_trips():
+
+    conn = sqlite3.connect("tourmate.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT id, destination, days, budget,
+               interests, itinerary, saved_at
+        FROM trips
+        ORDER BY id DESC
+    """)
+
+    trips = cursor.fetchall()
+
+    conn.close()
+
+    return trips
+
+
+def delete_trip(trip_id):
+
+    conn = sqlite3.connect("tourmate.db")
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "DELETE FROM trips WHERE id = ?",
+        (trip_id,)
+    )
+
+    conn.commit()
+    conn.close()
+
+
+init_db()
 
 
 # ============================================================
@@ -86,6 +172,7 @@ def extract_travel_details(text):
         or "rupees" in text
         or "inr" in text
     ):
+
         details["currency"] = "INR"
 
     elif (
@@ -94,6 +181,7 @@ def extract_travel_details(text):
         or "pounds" in text
         or "gbp" in text
     ):
+
         details["currency"] = "GBP"
 
     elif (
@@ -102,6 +190,7 @@ def extract_travel_details(text):
         or "dollars" in text
         or "usd" in text
     ):
+
         details["currency"] = "USD"
 
     elif (
@@ -110,6 +199,7 @@ def extract_travel_details(text):
         or "euros" in text
         or "eur" in text
     ):
+
         details["currency"] = "EUR"
 
     budget_patterns = [
@@ -751,7 +841,8 @@ menu = st.sidebar.selectbox(
         "🤖 AI Travel Guide",
         "🎤 Speech Chat",
         "📷 Image OCR",
-        "🌍 Translator Mode"
+        "🌍 Translator Mode",
+        "💾 My Saved Trips"
     ]
 )
 
@@ -760,12 +851,7 @@ menu = st.sidebar.selectbox(
 # HOME
 # ============================================================
 
-
 if menu == "🏠 Home":
-
-    # --------------------------------------------------------
-    # HERO SECTION
-    # --------------------------------------------------------
 
     st.markdown(
         """
@@ -788,10 +874,6 @@ if menu == "🏠 Home":
 
     st.markdown("")
 
-    # --------------------------------------------------------
-    # HERO ACTION
-    # --------------------------------------------------------
-
     col1, col2, col3 = st.columns([1, 1.2, 1])
 
     with col2:
@@ -812,43 +894,39 @@ if menu == "🏠 Home":
 
     st.markdown("---")
 
-    # --------------------------------------------------------
-    # QUICK STATS
-    # --------------------------------------------------------
-
     st.markdown("### 📊 TourMate at a Glance")
 
     stat1, stat2, stat3, stat4 = st.columns(4)
 
     with stat1:
+
         st.metric(
             "Destinations",
             "8"
         )
 
     with stat2:
+
         st.metric(
             "AI Modes",
             "4"
         )
 
     with stat3:
+
         st.metric(
             "Trip Length",
             "1–7 Days"
         )
 
     with stat4:
+
         st.metric(
             "Experience",
             "Multimodal"
         )
 
     st.markdown("")
-
-    # --------------------------------------------------------
-    # FEATURES
-    # --------------------------------------------------------
 
     st.markdown("### ✨ What can TourMate do?")
 
@@ -904,12 +982,13 @@ if menu == "🏠 Home":
             )
 
             st.write(
-                "Upload travel signs, menus or notices "
-                "and extract useful information using OCR."
+                "Upload travel signs, menus, maps, "
+                "landmarks or pictorial information "
+                "for AI-powered analysis."
             )
 
             st.caption(
-                "👁️ OCR + AI response"
+                "👁️ OCR + Vision AI"
             )
 
     with f4:
@@ -932,10 +1011,6 @@ if menu == "🏠 Home":
             )
 
     st.markdown("---")
-
-    # --------------------------------------------------------
-    # DESTINATIONS
-    # --------------------------------------------------------
 
     st.markdown(
         "## 🗺️ Where will you go?"
@@ -1007,10 +1082,6 @@ if menu == "🏠 Home":
 
     st.markdown("---")
 
-    # --------------------------------------------------------
-    # HOW IT WORKS
-    # --------------------------------------------------------
-
     st.markdown(
         "## 🧭 How TourMate Works"
     )
@@ -1064,10 +1135,6 @@ if menu == "🏠 Home":
 
     st.markdown("---")
 
-    # --------------------------------------------------------
-    # EXAMPLE PROMPTS
-    # --------------------------------------------------------
-
     st.markdown(
         "## 💬 Try asking TourMate"
     )
@@ -1105,14 +1172,9 @@ if menu == "🏠 Home":
 
     st.markdown("---")
 
-    # --------------------------------------------------------
-    # FOOTER
-    # --------------------------------------------------------
-
     st.caption(
         "🌍 TourMate AI • Smart Multimodal Travel Assistant"
     )
-
 
 
 # ============================================================
@@ -1176,11 +1238,58 @@ elif menu == "🤖 AI Travel Guide":
 
             if travel_response:
 
+                st.session_state["current_itinerary"] = (
+                    travel_response
+                )
+
+                st.session_state["current_trip_details"] = (
+                    extract_travel_details(user_text)
+                )
+
+                st.session_state["current_trip_interests"] = (
+                    get_interests(user_text)
+                )
+
                 st.markdown("---")
 
                 st.markdown(
                     travel_response
                 )
+
+                st.markdown("---")
+
+                st.markdown(
+                    "### 💾 Save Your Trip"
+                )
+
+                if st.button(
+                    "💾 Save My Trip",
+                    use_container_width=True
+                ):
+
+                    details = st.session_state[
+                        "current_trip_details"
+                    ]
+
+                    interests = st.session_state[
+                        "current_trip_interests"
+                    ]
+
+                    save_trip(
+                        details["location"],
+                        details["days"] or 3,
+                        details["budget"],
+                        interests,
+                        st.session_state[
+                            "current_itinerary"
+                        ]
+                    )
+
+                    st.success(
+                        "✅ Trip saved successfully! "
+                        "Go to **💾 My Saved Trips** "
+                        "to view it."
+                    )
 
                 speech_text = create_short_speech(
                     user_text
@@ -1322,13 +1431,19 @@ elif menu == "🎤 Speech Chat":
 
 
 # ============================================================
-# IMAGE OCR
+# IMAGE UNDERSTANDING
 # ============================================================
 
 elif menu == "📷 Image OCR":
 
     st.subheader(
-        "📷 Travel Image OCR"
+        "📷 Travel Image Understanding"
+    )
+
+    st.write(
+        "Upload a travel image and TourMate will extract "
+        "text when available or understand the visual "
+        "content when the image contains pictorial information."
     )
 
     uploaded_file = st.file_uploader(
@@ -1344,7 +1459,7 @@ elif menu == "📷 Image OCR":
 
         st.image(
             uploaded_file,
-            caption="Uploaded Image",
+            caption="Uploaded Travel Image",
             use_container_width=True
         )
 
@@ -1357,15 +1472,27 @@ elif menu == "📷 Image OCR":
                 uploaded_file.getbuffer()
             )
 
-        text = ocr_and_translate(
-            "temp.jpg",
-            "en"
-        )
+        # ----------------------------------------------------
+        # STEP 1: OCR
+        # ----------------------------------------------------
 
-        if text:
+        with st.spinner(
+            "🔍 Checking the image for readable text..."
+        ):
+
+            text = ocr_and_translate(
+                "temp.jpg",
+                "en"
+            )
+
+        # ----------------------------------------------------
+        # STEP 2A: TEXT FOUND
+        # ----------------------------------------------------
+
+        if text and text.strip():
 
             st.success(
-                "✅ Text extracted successfully!"
+                "✅ Text detected in the image!"
             )
 
             st.markdown(
@@ -1418,16 +1545,68 @@ elif menu == "📷 Image OCR":
 
             if audio:
 
+                st.markdown(
+                    "### 🔊 Listen"
+                )
+
                 st.audio(
                     audio,
                     format="audio/mp3"
                 )
 
+        # ----------------------------------------------------
+        # STEP 2B: NO TEXT → VISION AI
+        # ----------------------------------------------------
+
         else:
 
-            st.error(
-                "No text detected in the uploaded image."
+            st.info(
+                "👁️ No readable text detected. "
+                "TourMate will now analyze the visual content."
             )
+
+            with st.spinner(
+                "🧠 TourMate is understanding the image..."
+            ):
+
+                visual_response = analyze_travel_image(
+                    "temp.jpg"
+                )
+
+            if visual_response:
+
+                st.success(
+                    "✅ Visual information analyzed!"
+                )
+
+                st.markdown(
+                    "### 👁️ TourMate Visual Analysis"
+                )
+
+                st.markdown(
+                    visual_response
+                )
+
+                audio = speak(
+                    visual_response
+                )
+
+                if audio:
+
+                    st.markdown(
+                        "### 🔊 Listen"
+                    )
+
+                    st.audio(
+                        audio,
+                        format="audio/mp3"
+                    )
+
+            else:
+
+                st.error(
+                    "❌ I couldn't analyze this image."
+                )
 
 
 # ============================================================
@@ -1487,3 +1666,96 @@ elif menu == "🌍 Translator Mode":
                     audio,
                     format="audio/mp3"
                 )
+
+
+# ============================================================
+# MY SAVED TRIPS
+# ============================================================
+
+elif menu == "💾 My Saved Trips":
+
+    st.subheader(
+        "💾 My Saved Trips"
+    )
+
+    st.write(
+        "View and manage your saved travel itineraries."
+    )
+
+    trips = get_saved_trips()
+
+    if not trips:
+
+        st.info(
+            "🌍 You haven't saved any trips yet."
+        )
+
+        st.write(
+            "Generate a travel plan from "
+            "**🤖 AI Travel Guide** and save it here."
+        )
+
+    else:
+
+        st.success(
+            f"📚 You have {len(trips)} saved trip(s)."
+        )
+
+        for trip in trips:
+
+            (
+                trip_id,
+                destination,
+                days,
+                budget,
+                interests,
+                itinerary,
+                saved_at
+            ) = trip
+
+            with st.container(border=True):
+
+                st.markdown(
+                    f"### 📍 {destination.title()} — {days} Days"
+                )
+
+                st.caption(
+                    f"🕒 Saved on {saved_at}"
+                )
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+
+                    st.write(
+                        f"💰 **Budget:** {budget}"
+                    )
+
+                with col2:
+
+                    st.write(
+                        f"🎯 **Interests:** {interests}"
+                    )
+
+                with st.expander(
+                    "📅 View Itinerary"
+                ):
+
+                    st.markdown(
+                        itinerary
+                    )
+
+                if st.button(
+                    "🗑️ Delete Trip",
+                    key=f"delete_{trip_id}"
+                ):
+
+                    delete_trip(
+                        trip_id
+                    )
+
+                    st.success(
+                        "Trip deleted successfully."
+                    )
+
+                    st.rerun()
